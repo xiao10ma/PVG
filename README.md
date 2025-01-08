@@ -1,21 +1,24 @@
 # Periodic Vibration Gaussian: Dynamic Urban Scene Reconstruction and Real-time Rendering
-### [[Project]](https://fudan-zvg.github.io/PVG) [[Paper]](https://arxiv.org/abs/2311.18561) 
 
-> [**Periodic Vibration Gaussian: Dynamic Urban Scene Reconstruction and Real-time Rendering**](https://arxiv.org/abs/2311.18561),            
-> Yurui Chen, [Chun Gu](https://sulvxiangxin.github.io/), Junzhe Jiang, [Xiatian Zhu](https://surrey-uplab.github.io/), [Li Zhang](https://lzrobots.github.io)  
+### [[Project]](https://fudan-zvg.github.io/PVG) [[Paper]](https://arxiv.org/abs/2311.18561)
+
+> [**Periodic Vibration Gaussian: Dynamic Urban Scene Reconstruction and Real-time Rendering**](https://arxiv.org/abs/2311.18561),
+> Yurui Chen, [Chun Gu](https://sulvxiangxin.github.io/), Junzhe Jiang, [Xiatian Zhu](https://surrey-uplab.github.io/), [Li Zhang](https://lzrobots.github.io)
 > **Arxiv preprint**
 
-**Official implementation of "Periodic Vibration Gaussian: 
-Dynamic Urban Scene Reconstruction and Real-time Rendering".** 
-
+**Official implementation of "Periodic Vibration Gaussian:
+Dynamic Urban Scene Reconstruction and Real-time Rendering".**
 
 ## 🛠️ Pipeline
+
 <div align="center">
   <img src="assets/pipeline.png"/>
 </div><br/>
 
 ## Get started
+
 ### Environment
+
 ```
 # Clone the repo.
 git clone https://github.com/fudan-zvg/PVG.git
@@ -43,12 +46,15 @@ pip install ./nvdiffrast
 ```
 
 ### Data preparation
+
 Create a directory for the data: `mkdir data`.
+
 #### Waymo dataset
 
 Preprocessed 4 waymo scenes for results in Table 1 of our paper can be downloaded [here](https://drive.google.com/file/d/1eTNJz7WeYrB3IctVlUmJIY0z8qhjR_qF/view?usp=sharing) (optional: [corresponding label](https://drive.google.com/file/d/1rkOzYqD1wdwILq_tUNvXBcXMe5YwtI2k/view?usp=drive_link)). Please unzip and put it into `data` directory.
 
 First prepare the kitti-format Waymo dataset:
+
 ```
 # Given the following dataset, we convert it to kitti-format
 # data
@@ -63,9 +69,11 @@ pip install -r requirements-data.txt
 # Convert the waymo dataset to kitti-format
 python scripts/waymo_converter.py waymo --root-path ./data/waymo/ --out-dir ./data/waymo/ --workers 128 --extra-tag waymo
 ```
-Then use the example script `scripts/extract_scenes_waymo.py` to extract the scenes from the kitti-format Waymo dataset which we employ to extract the scenes listed in StreetSurf. 
+
+Then use the example script `scripts/extract_scenes_waymo.py` to extract the scenes from the kitti-format Waymo dataset which we employ to extract the scenes listed in StreetSurf.
 
 Following [StreetSurf](https://github.com/PJLab-ADG/neuralsim), we use [Segformer](https://github.com/NVlabs/SegFormer) to extract the sky mask and put them as follows:
+
 ```
 data
 └── waymo_scenes
@@ -81,13 +89,16 @@ data
         └── velodyne
             └── frame_id.bin
 ```
-We provide an example script `scripts/extract_mask_waymo.py` to extract the sky mask from the extracted Waymo dataset, follow instructions [here](https://github.com/PJLab-ADG/neuralsim/blob/main/dataio/autonomous_driving/waymo/README.md#extract-mask-priors----for-sky-pedestrian-etc) to setup the Segformer environment. 
+
+We provide an example script `scripts/extract_mask_waymo.py` to extract the sky mask from the extracted Waymo dataset, follow instructions [here](https://github.com/PJLab-ADG/neuralsim/blob/main/dataio/autonomous_driving/waymo/README.md#extract-mask-priors----for-sky-pedestrian-etc) to setup the Segformer environment.
 
 #### KITTI dataset
+
 Preprocessed 3 kitti scenes for results in Table 1 of our paper can be downloaded [here](https://drive.google.com/file/d/1y6elRlFdRXW02oUOHdS9inVHK3U4xBXZ/view?usp=sharinghttps://drive.google.com/file/d/1y6elRlFdRXW02oUOHdS9inVHK3U4xBXZ/view?usp=sharing). Please unzip and put it into `data` directory.
 
 Put the [KITTI-MOT](https://www.cvlibs.net/datasets/kitti/eval_tracking.php) dataset in `data` directory.
 Following [StreetSurf](https://github.com/PJLab-ADG/neuralsim), we use [Segformer](https://github.com/NVlabs/SegFormer) to extract the sky mask and put them as follows:
+
 ```
 data
 └── kitti_mot
@@ -106,10 +117,20 @@ data
             └── sequence_id
                 └── frame_id.bin
 ```
+
 We also provide an example script `scripts/extract_mask_kitti.py` to extract the sky mask from the KITTI dataset.
 
-
 ### Training
+
+```
+CUDA_VISIBLE_DEVICES=5 python train.py \
+--config configs/waymo_nvs.yaml \
+source_path=dataset/017 \
+model_path=eval_output/waymo_nvs/017_lidar1e-1_self_supervison
+
+
+```
+
 ```
 # Waymo image reconstruction
 CUDA_VISIBLE_DEVICES=0 python train.py \
@@ -141,7 +162,9 @@ start_frame=380 end_frame=431
 After training, evaluation results can be found in `{EXPERIMENT_DIR}/eval` directory.
 
 ### Evaluating
+
 You can also use the following command to evaluate.
+
 ```
 CUDA_VISIBLE_DEVICES=0 python evaluate.py \
 --config configs/kitti_reconstruction.yaml \
@@ -151,7 +174,9 @@ start_frame=380 end_frame=431
 ```
 
 ### Automatically removing the dynamics
+
 You can the following command to automatically remove the dynamics, the render results will be saved in `{EXPERIMENT_DIR}/separation` directory.
+
 ```
 CUDA_VISIBLE_DEVICES=1 python separate.py \
 --config configs/waymo_reconstruction.yaml \
@@ -159,11 +184,11 @@ source_path=data/waymo_scenes/0158150 \
 model_path=eval_output/waymo_reconstruction/0158150
 ```
 
-
 ## 🎥 Videos
-### 🎞️ Demo
-[![Demo Video](https://i3.ytimg.com/vi/jJCCkdpDkRQ/maxresdefault.jpg)](https://www.youtube.com/embed/jJCCkdpDkRQ)
 
+### 🎞️ Demo
+
+[![Demo Video](https://i3.ytimg.com/vi/jJCCkdpDkRQ/maxresdefault.jpg)](https://www.youtube.com/embed/jJCCkdpDkRQ)
 
 ### 🎞️ Rendered RGB, Depth and Semantic
 
@@ -176,6 +201,7 @@ https://github.com/fudan-zvg/PVG/assets/83005605/0ed679d6-5e62-4923-b2cb-02c587e
 https://github.com/fudan-zvg/PVG/assets/83005605/3ffda292-1b73-43d3-916a-b524f143f0c9
 
 ### 🎞️ Image Reconstruction on Waymo
+
 #### Comparison with static methods
 
 https://github.com/fudan-zvg/PVG/assets/83005605/93e32945-7e9a-454a-8c31-5563125de95b
@@ -193,6 +219,7 @@ https://github.com/fudan-zvg/PVG/assets/83005605/e579f8b8-d31e-456b-a943-b39d560
 https://github.com/fudan-zvg/PVG/assets/83005605/37393332-5d34-4bd0-8285-40bf938b849f
 
 ## 📜 BibTeX
+
 ```bibtex
 @article{chen2023periodic,
   title={Periodic Vibration Gaussian: Dynamic Urban Scene Reconstruction and Real-time Rendering},

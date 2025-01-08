@@ -46,8 +46,8 @@ env_optimize_from: 0
 
 # OptimizationParams
 iterations: 30000
-position_lr_init: 0.00016
-position_lr_final: 0.0000016
+position_lr_init: 1.6e-3
+position_lr_final: 1.6e-5
 position_lr_delay_mult: 0.01
 t_lr_init: 0.0008
 position_lr_max_steps: 30_000
@@ -58,6 +58,7 @@ scaling_t_lr: 0.002
 velocity_lr: 0.001
 rotation_lr: 0.001
 envmap_lr: 0.01
+normal_lr: 0.0 # TODO: 0.001
 
 time_split_frac: 0.5
 percent_dense: 0.01
@@ -68,7 +69,7 @@ densify_from_iter: 500
 densify_until_iter: 15_000
 densify_grad_threshold: 0.0002
 densify_grad_t_threshold: 0.002
-densify_until_num_points: 3000000
+densify_until_num_points: 5000000
 sh_increase_interval: 1000
 scale_increase_interval: 5000
 prune_big_point: 1

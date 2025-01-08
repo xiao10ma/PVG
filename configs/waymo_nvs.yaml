@@ -2,13 +2,25 @@ exhaust_test: false
 
 
 # ModelParams
-scene_type: "Waymo"
+scene_type: "DriveXWaymo"
 resolution_scales: [1, 2, 4, 8, 16]
 cam_num: 3
 eval: true
 num_pts: 600000
 t_init: 0.1
-separate_scaling_t: 0.2
+time_duration: [0, 1]
+separate_scaling_t: 0.2 # scaling t
+
+start_time: 61
+end_time: 109 # 109
+
+
+order: 3 # new, 3 for cubic bezier
+bbox_frame_interval: 5 # 5 frames for bbox
+
+load_sky_mask: true
+load_dynamic_mask: true
+load_normal_map: false
 
 # PipelineParams
 
@@ -23,6 +35,20 @@ densify_grad_threshold: 0.00017
 sh_increase_interval: 2000
 
 
-lambda_v_reg: 0.01
+prune_interval: 200
 
 
+lambda_v_reg: 0.0
+lambda_lidar: 1e-1 # 1e-1
+lambda_self_supervision: 0.5
+lambda_static_self_supervision: 0.0
+lambda_static_v_reg: 0.0
+lambda_sky_opa: 0.05
+lambda_inv_depth: 0.0
+lambda_v_smooth: 0.0
+lambda_opacity_entropy: 0.0
+
+render_type: bezier
+
+
+static_thresh: 1.0

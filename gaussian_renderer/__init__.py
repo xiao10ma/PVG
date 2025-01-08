@@ -12,7 +12,7 @@
 import torch
 import math
 from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer
-from scene.gaussian_model import GaussianModel
+from scene.bz_gaussian_model import GaussianModel
 from scene.cameras import Camera
 from utils.sh_utils import eval_sh
 
@@ -67,7 +67,7 @@ def render(viewpoint_camera: Camera, pc: GaussianModel, pipe, bg_color: torch.Te
 
     if time_shift is not None:
         means3D = pc.get_xyz_SHM(viewpoint_camera.timestamp-time_shift)
-        means3D = means3D + pc.get_inst_velocity * time_shift
+        means3D = means3D + pc.get_inst_velocity(viewpoint_camera.timestamp-time_shift) * time_shift
         marginal_t = pc.get_marginal_t(viewpoint_camera.timestamp-time_shift)
     else:
         means3D = pc.get_xyz_SHM(viewpoint_camera.timestamp)
@@ -138,6 +138,22 @@ def render(viewpoint_camera: Camera, pc: GaussianModel, pipe, bg_color: torch.Te
     if env_map is not None:
         bg_color_from_envmap = env_map(viewpoint_camera.get_world_directions(is_training).permute(1, 2, 0)).permute(2, 0, 1)
         rendered_image = rendered_image + (1 - rendered_opacity) * bg_color_from_envmap
+
+    # For debug
+    # from utils.general_utils import save_ply
+    # save_mask = torch.logical_and(pc.get_opacity > 0.2, pc.get_opacity < 0.3).squeeze()
+    # dc = pc.get_features[:, 0, :]
+    # save_ply(means3D[save_mask], './2e-1_3e-1.ply', dc[save_mask])
+    # hist
+    # import matplotlib.pyplot as plt
+    # opa = pc.get_opacity.cpu().detach().numpy()
+    # plt.hist(opa, bins=50, color='blue', edgecolor='black', alpha=0.7)
+    # plt.yscale('log')
+    # plt.title('Histogram of Distance Values')
+    # plt.xlabel('Value')
+    # plt.ylabel('Frequency')
+    # plt.savefig('opa.png')
+    # plt.close()
 
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
     # They will be excluded from value updates used in the splitting criteria.

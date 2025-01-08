@@ -31,6 +31,7 @@ except ImportError:
     TENSORBOARD_FOUND = False
 
 EPS = 1e-5
+from utils.general_utils import rotation_to_quaternion, quaternion_multiply, quaternion_to_rotation_matrix
 def training(args):
     
     if TENSORBOARD_FOUND:
@@ -54,8 +55,9 @@ def training(args):
         env_map = None
 
     first_iter = 0
+    # args.checkpoint = 'eval_output/waymo_nvs/017_higher_lr_prune_max_radii/chkpnt30000.pth'
     if args.start_checkpoint:
-        (model_params, first_iter) = torch.load(args.start_checkpoint)
+        (model_params, first_iter) = torch.load(args.checkpoint)
         gaussians.restore(model_params, args)
         
         if env_map is not None:
@@ -73,9 +75,20 @@ def training(args):
     viewpoint_stack = None
 
     ema_dict_for_log = defaultdict(int)
+    # args.iterations = 40000
     progress_bar = tqdm(range(first_iter + 1, args.iterations + 1), desc="Training progress")
     
-    for iteration in progress_bar:       
+    for iteration in progress_bar:   
+        if gaussians.get_control_points.isnan().sum() > 0 or gaussians.get_scaling.isnan().sum() > 0 or gaussians.get_scaling_t.isnan().sum() > 0 or gaussians.get_t.isnan().sum() > 0 or gaussians.get_features.isnan().sum() > 0 or gaussians.get_opacity.isnan().sum() > 0 or quaternion_to_rotation_matrix(gaussians.get_rotation).isnan().sum() > 0:
+            print("control points", gaussians.get_control_points.isnan().sum())
+            print("scaling", gaussians.get_scaling.isnan().sum())
+            print("scaling t", gaussians.get_scaling_t.isnan().sum())
+            print("t", gaussians.get_t.isnan().sum())
+            print("features", gaussians.get_features.isnan().sum())
+            print("opacity", gaussians.get_opacity.isnan().sum())
+            print("rotation", quaternion_to_rotation_matrix(gaussians.get_rotation).isnan().sum())
+            raise ValueError(f"iteration {iteration} nan")
+        
         iter_start.record()
         gaussians.update_learning_rate(iteration)
 
@@ -88,7 +101,7 @@ def training(args):
         viewpoint_cam = scene.getTrainCameras()[viewpoint_stack.pop(randint(0, len(viewpoint_stack) - 1))]
         
         # render v and t scale map
-        v = gaussians.get_inst_velocity
+        v = gaussians.get_inst_velocity(viewpoint_cam.timestamp)
         t_scale = gaussians.get_scaling_t.clamp_max(2)
         other = [t_scale, v]
 
@@ -190,6 +203,7 @@ def training(args):
             if iteration % 10 == 0:
                 postfix = {k[5:] if k.startswith("loss_") else k:f"{ema_dict_for_log[k]:.{5}f}" for k, v in ema_dict_for_log.items()}
                 postfix["scale"] = scene.resolution_scales[scene.scale_index]
+                postfix["pts"] = gaussians.get_control_points.shape[0]
                 progress_bar.set_postfix(postfix)
 
             log_dict['iter_time'] = iter_start.elapsed_time(iter_end)
@@ -211,7 +225,9 @@ def training(args):
 
                     if size_threshold is not None:
                         size_threshold = size_threshold // scene.resolution_scales[0]
-
+                    if iteration % args.prune_interval == 0:
+                        # max_radii2D is int
+                        gaussians.prune_points(gaussians.max_radii2D < 0.5)
                     gaussians.densify_and_prune(args.densify_grad_threshold, args.thresh_opa_prune, scene.cameras_extent, size_threshold, args.densify_grad_t_threshold)
 
                 if iteration % args.opacity_reset_interval == 0 or (args.white_background and iteration == args.densify_from_iter):
@@ -269,7 +285,8 @@ def complete_eval(tb_writer, iteration, test_iterations, scene : Scene, renderFu
     if iteration in test_iterations:
         scale = scene.resolution_scales[scene.scale_index]
         if iteration < args.iterations:
-            validation_configs = ({'name': 'test', 'cameras': scene.getTestCameras(scale=scale)},)
+            validation_configs = ({'name': 'test', 'cameras': scene.getTestCameras(scale=scale)},
+                            {'name': 'train', 'cameras': scene.getTrainCameras()})
         else:
             if "kitti" in args.model_path:
                 # follow NSG: https://github.com/princeton-computational-imaging/neural-scene-graphs/blob/8d3d9ce9064ded8231a1374c3866f004a4a281f8/data_loader/load_kitti.py#L766
@@ -290,8 +307,9 @@ def complete_eval(tb_writer, iteration, test_iterations, scene : Scene, renderFu
                 psnr_test = 0.0
                 ssim_test = 0.0
                 lpips_test = 0.0
+                depth_error = 0.0
                 outdir = os.path.join(args.model_path, "eval", config['name'] + f"_{iteration}" + "_render")
-                os.makedirs(outdir,exist_ok=True)
+                os.makedirs(outdir, exist_ok=True)
                 for idx, viewpoint in enumerate(tqdm(config['cameras'])):
                     render_pkg = renderFunc(viewpoint, scene.gaussians, *renderArgs, env_map=env_map)
                     image = torch.clamp(render_pkg["render"], 0.0, 1.0)
@@ -305,7 +323,10 @@ def complete_eval(tb_writer, iteration, test_iterations, scene : Scene, renderFu
                             depth = 1 / (alpha / depth.clamp_min(EPS) + (1 - alpha) / sky_depth).clamp_min(EPS)
                         elif args.depth_blend_mode == 1:
                             depth = alpha * depth + (1 - alpha) * sky_depth
-                
+                    pts_depth = viewpoint.pts_depth.cuda()
+                    mask = (pts_depth > 0)
+                    depth_error += F.l1_loss(depth[mask], pts_depth[mask]).double()
+
                     depth = visualize_depth(depth)
                     alpha = alpha.repeat(3, 1, 1)
 
@@ -317,20 +338,23 @@ def complete_eval(tb_writer, iteration, test_iterations, scene : Scene, renderFu
                     l1_test += F.l1_loss(image, gt_image).double()
                     psnr_test += psnr(image, gt_image).double()
                     ssim_test += ssim(image, gt_image).double()
-                    lpips_test += lpips(image, gt_image, net_type='vgg').double()  # very slow
+                    lpips_test += lpips(image, gt_image, net_type='vgg').double() # very slow
 
                 psnr_test /= len(config['cameras'])
                 l1_test /= len(config['cameras'])
                 ssim_test /= len(config['cameras'])
                 lpips_test /= len(config['cameras'])
+                depth_error /= len(config['cameras'])
 
                 print("\n[ITER {}] Evaluating {}: L1 {} PSNR {} SSIM {} LPIPS {}".format(iteration, config['name'], l1_test, psnr_test, ssim_test, lpips_test))
                 if tb_writer:
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - l1_loss', l1_test, iteration)
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - psnr', psnr_test, iteration)
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - ssim', ssim_test, iteration)
-                with open(os.path.join(outdir, "metrics.json"), "w") as f:
-                    json.dump({"split": config['name'], "iteration": iteration, "psnr": psnr_test.item(), "ssim": ssim_test.item(), "lpips": lpips_test.item()}, f)
+                with open(os.path.join(args.model_path, "eval", f"metrics_{config['name']}_{iteration}.json"), "a+") as f:
+                    json.dump({"split": config['name'], "iteration": iteration,
+                               "psnr": psnr_test.item(), "ssim": ssim_test.item(), "lpips": lpips_test.item(), "depth_error": depth_error.item(),
+                               }, f, indent=1)
         torch.cuda.empty_cache()
 
 
@@ -355,9 +379,10 @@ if __name__ == "__main__":
         args.test_iterations += [i for i in range(0,args.iterations, args.test_interval)]
     
     print("Optimizing " + args.model_path)
-
+    os.makedirs(args.model_path, exist_ok=True)
+    OmegaConf.save(args, os.path.join(args.model_path, "config.yaml"))
     seed_everything(args.seed)
-
+    args.resolution_scales = [1]
     training(args)
 
     # All done

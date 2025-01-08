@@ -1,7 +1,7 @@
 from typing import NamedTuple
 import numpy as np
 from utils.graphics_utils import getWorld2View2
-from scene.gaussian_model import BasicPointCloud
+from scene.pvg_gaussian_model import BasicPointCloud
 from plyfile import PlyData, PlyElement
 
 
@@ -23,6 +23,8 @@ class CameraInfo(NamedTuple):
     cx: float = None
     cy: float = None
     pointcloud_camera: np.array = None
+    dynamic_mask: np.array = None
+    normal_map: np.array = None
 
 class SceneInfo(NamedTuple):
     point_cloud: BasicPointCloud
@@ -32,6 +34,8 @@ class SceneInfo(NamedTuple):
     ply_path: str
     time_interval: float = 0.02
     time_duration: list = [-0.5, 0.5]
+    # for bezier-gs
+    ply_dict: dict = None
 
 def getNerfppNorm(cam_info):
     def get_center_and_diag(cam_centers):

@@ -10,3 +10,6 @@ data
 output
 eval_output
 diff-gaussian-rasterization
+*.ply
+*.png
+dataset
