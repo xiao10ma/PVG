@@ -16,11 +16,11 @@ from utils.system_utils import searchForMaxIteration
 from scene.gaussian_model import GaussianModel
 from scene.envlight import EnvLight
 from utils.camera_utils import cameraList_from_camInfos, camera_to_JSON
-from scene.waymo_loader import readWaymoInfo
+from scene.waymo_loader import readDriveXWaymoInfo
 from scene.kittimot_loader import readKittiMotInfo
 
 sceneLoadTypeCallbacks = {
-    "Waymo": readWaymoInfo,
+    "Waymo": readDriveXWaymoInfo,
     "KittiMot": readKittiMotInfo,
 }
 
@@ -84,7 +84,7 @@ class Scene:
                                                         "iteration_" + str(self.loaded_iter),
                                                         "point_cloud.ply"))
         else:
-            self.gaussians.create_from_pcd(scene_info.point_cloud, 1)
+            self.gaussians.create_from_ply_dict(scene_info.ply_dict, 1)
 
     def upScale(self):
         self.scale_index = max(0, self.scale_index - 1)

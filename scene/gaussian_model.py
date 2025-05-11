@@ -64,6 +64,8 @@ class GaussianModel:
         self.percent_dense = 0
         self.spatial_lr_scale = 0
 
+        self.group_num = 0
+
         self.time_duration = args.time_duration
         self.no_time_split = args.no_time_split
         self.t_grad = args.t_grad
@@ -89,6 +91,7 @@ class GaussianModel:
             self._t,
             self._scaling_t,
             self._velocity,
+            self._group,
             self.max_radii2D,
             self.xyz_gradient_accum,
             self.t_gradient_accum,
@@ -110,6 +113,7 @@ class GaussianModel:
             self._t,
             self._scaling_t,
             self._velocity,
+            self._group,
             self.max_radii2D,
             xyz_gradient_accum,
             t_gradient_accum,
@@ -140,11 +144,17 @@ class GaussianModel:
         return self.rotation_activation(self._rotation)
 
     def get_xyz_SHM(self, t):
+        dyn_mask = self.get_group > 0
+        xyz_pos = self._xyz.clone()
         a = 1/self.T * np.pi * 2
-        return self._xyz + self._velocity*torch.sin((t-self._t)*a)/a
+        xyz_pos[dyn_mask] = self._xyz[dyn_mask] + self._velocity[dyn_mask]*torch.sin((t-self._t[dyn_mask])*a)/a
+        return xyz_pos
 
     @property
     def get_inst_velocity(self):
+        dyn_mask = self.get_group > 0
+        velocity = self._velocity.clone()
+        velocity[dyn_mask] = self._velocity[dyn_mask]*torch.exp(-self.get_scaling_t[dyn_mask]/self.T/2*self.velocity_decay)
         return self._velocity*torch.exp(-self.get_scaling_t/self.T/2*self.velocity_decay)
 
     @property
@@ -154,6 +164,10 @@ class GaussianModel:
     @property
     def get_t(self):
         return self._t
+    
+    @property
+    def get_group(self):
+        return self._group
 
     @property
     def get_features(self):
@@ -257,6 +271,111 @@ class GaussianModel:
         self._scaling_t = nn.Parameter(scales_t.requires_grad_(True))
         self._velocity = nn.Parameter(velocity.requires_grad_(True))
 
+    def create_from_ply_dict(self, ply_dict, spatial_lr_scale):
+        self.spatial_lr_scale = spatial_lr_scale
+        gaussian_xyz = []
+        gaussian_color = []
+        gaussian_scales = []
+        gaussian_group = []
+        gaussian_t = []
+        gaussian_scaling_t = []
+        gaussian_velocity = []
+
+        obj_num = len(ply_dict.keys()) - 1 # 1 is background
+        self.trajectory_cp_tensor = torch.zeros([obj_num, 4, 3], dtype=torch.float32).cuda()
+        self.cp_recorded_timestamp_2_bezier_t = torch.zeros([obj_num, 4, 1], dtype=torch.float32).cuda()
+
+        for k, v in ply_dict.items():
+            if k == 'bkgd':
+                bg_xyz = torch.from_numpy(v['xyz_array']).float().cuda()
+                bg_color = torch.from_numpy(v['colors_array']).float().cuda()
+
+                # sphere init
+                r_max = 100000
+                r_min = 2
+                num_sph = self.random_init_point
+
+                theta = 2*torch.pi*torch.rand(num_sph)
+                phi = (torch.pi/2*0.99*torch.rand(num_sph))**1.5 # x**a decay
+                s = torch.rand(num_sph)
+                r_1 = s*1/r_min+(1-s)*1/r_max
+                r = 1/r_1
+                pts_sph = torch.stack([r*torch.cos(theta)*torch.cos(phi), r*torch.sin(theta)*torch.cos(phi), r*torch.sin(phi)],dim=-1).cuda()
+                pts_sph[:,2] = -pts_sph[:,2]+1
+                bg_xyz = torch.cat([bg_xyz, pts_sph], dim=0)
+                bg_color = torch.cat([
+                    bg_color,
+                    torch.zeros(pts_sph.shape[0], 3).float().cuda()
+                ], dim=0)
+
+                gaussian_xyz.append(bg_xyz)
+                gaussian_color.append(bg_color)
+                # get dist2
+                dist2 = torch.clamp_min(distCUDA2(bg_xyz), 0.0000001)
+                scales = self.scaling_inverse_activation(torch.sqrt(dist2))[..., None].repeat(1, 3)
+                gaussian_scales.append(scales)
+
+                gaussian_group.append(torch.zeros((bg_xyz.shape[0]), dtype=torch.int))
+
+                gaussian_t.append(torch.zeros((bg_xyz.shape[0]), dtype=torch.float32))
+                gaussian_scaling_t.append(torch.zeros((bg_xyz.shape[0]), dtype=torch.float32))
+                gaussian_velocity.append(torch.zeros((bg_xyz.shape[0], 3), dtype=torch.float32))
+            else:
+                # lidar may not cover the object or skip the sparse object
+                if v['xyz_offset'] is None or v['xyz_offset'].shape[0] < 30:
+                    continue
+                self.group_num += 1
+                mid_idx = v['xyz_offset'].shape[1] // 2
+                xyz_offset = torch.from_numpy(v['xyz_offset'][:, mid_idx, :]).float().cuda()
+                obj_color = torch.from_numpy(v['colors_array']).float().cuda()
+                trajectory = torch.from_numpy(v['trajectory'][mid_idx, :]).float().cuda()
+
+                xyz_pos = xyz_offset + trajectory
+                gaussian_xyz.append(xyz_pos)
+                gaussian_color.append(obj_color)
+
+                dist2 = torch.clamp_min(distCUDA2(xyz_pos), 0.0000001)
+                scales = self.scaling_inverse_activation(torch.sqrt(dist2))[..., None].repeat(1, 3)
+                gaussian_scales.append(scales)
+                gaussian_group.append(torch.ones((xyz_offset.shape[0]), dtype=torch.int) * self.group_num)
+
+                gaussian_t.append(torch.ones((xyz_pos.shape[0]), dtype=torch.float32) * v['timestamp_list'][mid_idx])
+                gaussian_scaling_t.append(torch.ones((xyz_pos.shape[0]), dtype=torch.float32) * 0.2)
+                gaussian_velocity.append(torch.zeros((xyz_pos.shape[0], 3), dtype=torch.float32))
+
+        gaussian_xyz = torch.cat(gaussian_xyz, dim=0).cuda().float()
+        gaussian_color = torch.cat(gaussian_color, dim=0).cuda().float()
+        gaussian_scales = torch.cat(gaussian_scales, dim=0).cuda().float()
+        gaussian_group = torch.cat(gaussian_group, dim=0).cuda().int()
+        gaussian_t = torch.cat(gaussian_t, dim=0).cuda().float().unsqueeze(-1)
+        gaussian_scaling_t = torch.cat(gaussian_scaling_t, dim=0).cuda().float().unsqueeze(-1)
+        gaussian_velocity = torch.cat(gaussian_velocity, dim=0).cuda().float()
+
+        fused_color = RGB2SH(gaussian_color)
+        features = torch.zeros((fused_color.shape[0], 3, self.get_max_sh_channels)).float().cuda()
+        features[:, :3, 0] = fused_color
+        features[:, 3:, 1:] = 0.0
+
+        rots = torch.zeros((gaussian_xyz.shape[0], 4), device="cuda")
+        rots[:, 0] = 1
+
+        opacities = inverse_sigmoid(0.01 * torch.ones((gaussian_xyz.shape[0], 1), dtype=torch.float, device="cuda"))
+
+        self._xyz = nn.Parameter(gaussian_xyz.requires_grad_(True))
+        self._features_dc = nn.Parameter(features[:, :, 0:1].transpose(1, 2).contiguous().requires_grad_(True))
+        self._features_rest = nn.Parameter(features[:, :, 1:].transpose(1, 2).contiguous().requires_grad_(True))
+        self._scaling = nn.Parameter(gaussian_scales.requires_grad_(True))
+        self._rotation = nn.Parameter(rots.requires_grad_(True))
+        self._opacity = nn.Parameter(opacities.requires_grad_(True))
+        self._t = nn.Parameter(gaussian_t.requires_grad_(True))
+        self._scaling_t = nn.Parameter(gaussian_scaling_t.requires_grad_(True))
+        self._velocity = nn.Parameter(gaussian_velocity.requires_grad_(True))
+        self._group = gaussian_group.requires_grad_(False)
+        self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
+
+        self.trajectory_cp_tensor = nn.Parameter(self.trajectory_cp_tensor, requires_grad=True)
+        self.cp_recorded_timestamp_2_bezier_t = nn.Parameter(self.cp_recorded_timestamp_2_bezier_t, requires_grad=True)
+
     def training_setup(self, training_args):
         self.percent_dense = training_args.percent_dense
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
@@ -356,6 +475,8 @@ class GaussianModel:
         self._scaling_t = optimizable_tensors['scaling_t']
         self._velocity = optimizable_tensors['velocity']
         self.t_gradient_accum = self.t_gradient_accum[valid_points_mask]
+
+        self._group = self._group[valid_points_mask]
 
     def cat_tensors_to_optimizer(self, tensors_dict):
         optimizable_tensors = {}
@@ -491,6 +612,8 @@ class GaussianModel:
 
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation,
                                    new_t, new_scaling_t, new_velocity)
+        new_group = self._group[selected_pts_mask].repeat(N)
+        self._group = torch.cat((self._group, new_group), dim=0)
         prune_filter = torch.cat((selected_pts_mask, torch.zeros(N * selected_pts_mask.sum(), device="cuda", dtype=bool)))
         self.prune_points(prune_filter)
 
@@ -528,6 +651,8 @@ class GaussianModel:
 
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling,
                                    new_rotation, new_t, new_scaling_t, new_velocity)
+        new_group = self._group[selected_pts_mask]
+        self._group = torch.cat((self._group, new_group), dim=0)
 
     def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size, max_grad_t=None, prune_only=False):
         if not prune_only:

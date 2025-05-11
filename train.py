@@ -175,6 +175,23 @@ def training(args):
             loss_opacity_entropy =  -(o*torch.log(o)).mean()
             log_dict['loss_opacity_entropy'] = loss_opacity_entropy.item()
             loss = loss + args.lambda_opacity_entropy * loss_opacity_entropy
+
+        # if args.lambda_dynamic_render > 0:
+        #     loss_dynamic_l1 = F.l1_loss(dynamic_render_pkg["render"], dynamic_image)
+        #     log_dict['loss_dynamic_l1'] = loss_dynamic_l1.item()
+        #     loss_dynamic_ssim = 1.0 - ssim(dynamic_render_pkg["render"], dynamic_image)
+        #     log_dict['loss_dynamic_ssim'] = loss_dynamic_ssim.item()
+        #     loss_dynamic = (1.0 - args.lambda_dssim) * loss_dynamic_l1 + args.lambda_dssim * loss_dynamic_ssim
+        #     loss += args.lambda_dynamic_render * loss_dynamic
+
+        #     loss_dynamic_alpha_match_mask = torch.abs(dynamic_render_pkg["alpha"] - dynamic_mask.float()).mean()
+        #     log_dict["dynamic_alpha_match_mask"] = loss_dynamic_alpha_match_mask.item()
+        #     loss += args.lambda_dynamic_render * loss_dynamic_alpha_match_mask
+
+        # if args.lambda_dyn_render > 0:
+        #     loss_dynamic_l1 = F.l1_loss()
+
+
         
         loss.backward()
         log_dict['loss'] = loss.item()

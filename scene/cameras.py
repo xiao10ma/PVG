@@ -24,7 +24,7 @@ class Camera(nn.Module):
                  image_name=None, uid=0,
                  trans=np.array([0.0, 0.0, 0.0]), scale=1.0, data_device="cuda", timestamp=0.0, 
                  resolution=None, image_path=None,
-                 pts_depth=None, sky_mask=None
+                 pts_depth=None, sky_mask=None, dynamic_mask=None, bbox_mask=None,
                  ):
         super(Camera, self).__init__()
 
@@ -52,6 +52,8 @@ class Camera(nn.Module):
 
         self.original_image = image.clamp(0.0, 1.0).to(self.data_device)
         self.sky_mask = sky_mask.to(self.data_device) > 0 if sky_mask is not None else sky_mask
+        self.dynamic_mask = dynamic_mask.to(self.data_device) > 0 if dynamic_mask is not None else dynamic_mask
+        self.bbox_mask = bbox_mask.to(self.data_device) > 0 if bbox_mask is not None else bbox_mask
         self.pts_depth = pts_depth.to(self.data_device) if pts_depth is not None else pts_depth
 
         self.image_width = resolution[0]

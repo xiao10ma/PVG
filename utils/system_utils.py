@@ -40,3 +40,8 @@ class Timing:
         self.end.record()
         torch.cuda.synchronize()
         print(self.name, "elapsed", self.start.elapsed_time(self.end), "ms")
+
+# for _ in range(100):
+#     with Timing("test"):
+#         render()
+    

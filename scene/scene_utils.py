@@ -15,6 +15,8 @@ class CameraInfo(NamedTuple):
     width: int
     height: int
     sky_mask: np.array = None
+    dynamic_mask: np.array = None
+    bbox_mask: np.array = None
     timestamp: float = 0.0
     FovY: float = None
     FovX: float = None
@@ -32,6 +34,9 @@ class SceneInfo(NamedTuple):
     ply_path: str
     time_interval: float = 0.02
     time_duration: list = [-0.5, 0.5]
+    scale_factor: float = 1.0
+    # for bezier-gs
+    ply_dict: dict = None
 
 def getNerfppNorm(cam_info):
     def get_center_and_diag(cam_centers):

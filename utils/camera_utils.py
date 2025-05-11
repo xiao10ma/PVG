@@ -64,6 +64,28 @@ def loadCam(args, id, cam_info: CameraInfo, resolution_scale):
     else:
         sky_mask = None
 
+    if cam_info.dynamic_mask is not None:
+        if cam_info.dynamic_mask.shape[:2] != resolution[::-1]:
+            dynamic_mask = cv2.resize(cam_info.dynamic_mask, resolution)
+        else:
+            dynamic_mask = cam_info.dynamic_mask
+        if len(dynamic_mask.shape) == 2:
+            dynamic_mask = dynamic_mask[..., None]
+        dynamic_mask = torch.from_numpy(dynamic_mask).float().permute(2, 0, 1)
+    else:
+        dynamic_mask = None
+
+    if cam_info.bbox_mask is not None:
+        if cam_info.bbox_mask.shape[:2] != resolution[::-1]:
+            bbox_mask = cv2.resize(cam_info.bbox_mask, resolution)
+        else:
+            bbox_mask = cam_info.bbox_mask
+        if len(bbox_mask.shape) == 2:
+            bbox_mask = bbox_mask[..., None]
+        bbox_mask = torch.from_numpy(bbox_mask).float().permute(2, 0, 1)
+    else:
+        bbox_mask = None
+
     if cam_info.pointcloud_camera is not None:
         h, w = gt_image.shape[1:]
         K = np.eye(3)
@@ -113,6 +135,8 @@ def loadCam(args, id, cam_info: CameraInfo, resolution_scale):
         image_path=cam_info.image_path,
         pts_depth=pts_depth,
         sky_mask=sky_mask,
+        dynamic_mask=dynamic_mask,
+        bbox_mask=bbox_mask,
     )
 
 

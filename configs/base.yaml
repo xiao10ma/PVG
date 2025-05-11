@@ -8,6 +8,15 @@ vis_step: 500
 start_checkpoint: null
 seed: 0
 
+load_dynamic_mask: true
+load_bbox_mask: true
+
+start_time: 61
+end_time: 109
+camera_list: [0, 1, 2]
+undistort: true
+
+
 # ModelParams
 sh_degree: 3
 scene_type: "Waymo"
