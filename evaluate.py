@@ -46,7 +46,7 @@ def evaluation(iteration, scene : Scene, renderFunc, renderArgs, env_map=None):
             psnr_test = 0.0
             ssim_test = 0.0
             lpips_test = 0.0
-            outdir = os.path.join(args.model_path, "eval", config['name'] + f"_{iteration}" + "_render")
+            outdir = os.path.join(args.model_path, "evaluate", config['name'] + f"_{iteration}" + "_render")
             os.makedirs(outdir,exist_ok=True)
             for idx, viewpoint in enumerate(tqdm(config['cameras'])):
                 render_pkg = renderFunc(viewpoint, scene.gaussians, *renderArgs, env_map=env_map)
@@ -66,8 +66,8 @@ def evaluation(iteration, scene : Scene, renderFunc, renderArgs, env_map=None):
                 depth = visualize_depth(depth)
                 alpha = alpha.repeat(3, 1, 1)
 
-                grid = [gt_image, image, alpha, depth]
-                grid = make_grid(grid, nrow=2)
+                grid = [image]
+                grid = make_grid(grid, nrow=1)
 
                 save_image(grid, os.path.join(outdir, f"{viewpoint.colmap_id:03d}.png"))
 
