@@ -143,11 +143,10 @@ After training, evaluation results can be found in `{EXPERIMENT_DIR}/eval` direc
 ### Evaluating
 You can also use the following command to evaluate.
 ```
-CUDA_VISIBLE_DEVICES=0 python evaluate.py \
---config configs/kitti_reconstruction.yaml \
-source_path=data/kitti_mot/training/image_02/0001 \
-model_path=eval_output/kitti_reconstruction/0001 \
-start_frame=380 end_frame=431
+CUDA_VISIBLE_DEVICES=1 python evaluate.py \
+--config configs/waymo_nvs.yaml \
+source_path=dataset/waymo/017 \
+model_path=eval_output/waymo_nvs/017
 ```
 
 ### Automatically removing the dynamics
